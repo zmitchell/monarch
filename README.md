@@ -89,3 +89,11 @@ Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in the work by you, as defined in the Apache-2.0
 license, shall be dual licensed as above, without any additional terms or
 conditions.
+
+## FAQ
+- Why "monarch"?
+    - Metamorphic testing -> metamorphosis -> butterflies -> monarch
+- Should I use this?
+    - One day, but not today
+- Are you looking for contributors?
+    - Contributions would be great once I get things up and running!
