@@ -42,7 +42,7 @@ For my relation I'm going to require that I should get the same number of search
 #[test]
 fn test_search_results() {
     let mut runner: MetamorphicTestRunner<MyHTTPRequest, Vec<SearchResult>> = MetamorphicTestRunner::new();
-    //                                    ^^^^^^^^^^^    ^^^^^^^^^^^^^^^^^^
+    //                                    ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
     //                                    input type     output type
     let original_input = MyHTTPRequest::new();
     runner.set_input(original_input.clone());
