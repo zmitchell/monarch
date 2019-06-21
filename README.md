@@ -3,6 +3,8 @@
 Monarch is a barebones utility for metamorphic testing in Rust. For a great overview of metamorphic testing and some examples, there is an excellent blog post by Hillel Wayne:
 - [Metamorphic Testing - Hillel Wayne](https://hillelwayne.com/post/metamorphic-testing/)
 
+Monarch is not currently feature complete and should be considered in alpha. The API is subject to my whims at this point.
+
 ## Metamorphic tests
 With a basic unit test you know the input and ouput before, you're just verifying that your code produces output that you expect.
 ```rust
