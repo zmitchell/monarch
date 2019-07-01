@@ -51,7 +51,7 @@ impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
         if self.relation.is_none() {
             return Err(MonarchError::NoRelation);
         }
-        if self.transformations.len() == 0 {
+        if self.transformations.is_empty() {
             return Err(MonarchError::NoTransformations);
         }
         let op = self.operation.take().unwrap();
@@ -70,6 +70,63 @@ impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
     }
 }
 
+// `list` should really be U: Index + IntoIterator<T> where T: Clone
+// TODO: Add documentation string
+fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Vec<Vec<T>> {
+    let n = list.len();
+    let last_index = k - 1;
+    let start_of_last_k_elements = n - k;
+    let mut current_indices: Vec<usize> = (0..k).collect();
+    current_indices[last_index] -= 1; // prepare for first loop iteration
+    let mut items: Vec<Vec<T>> = Vec::new();
+    loop {
+        if indices_in_final_position(&current_indices, n, k) {
+            return items;
+        }
+        while current_indices[last_index] < (start_of_last_k_elements + last_index) {
+            current_indices[last_index] += 1;
+            store_item_from_indices(&list, &current_indices, &mut items);
+        }
+        pack_indices_leftward(&mut current_indices, n, k);
+        store_item_from_indices(&list, &current_indices, &mut items);
+    }
+}
+
+fn indices_in_final_position(indices: &[usize], n: usize, k: usize) -> bool {
+    let start_of_last_k_elements = n - k;
+    (0..k)
+        .map(|i| indices[i] == (start_of_last_k_elements + i))
+        .all(|x| x)
+}
+
+fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
+    let start_of_last_k_elements = n - k;
+    // Find the rightmost index that isn't in its final position and increment it.
+    for i in (0..=(k - 2)).rev() {
+        if indices[i] != (start_of_last_k_elements + i) {
+            indices[i] += 1;
+            // Pack the indices that follow `i` to the left so that `i`, `i+1`, ... are
+            // all one after another.
+            for (x, j) in (i + 1..k).enumerate() {
+                indices[j] = indices[i] + x + 1; // enumerate starts at 0
+            }
+            break;
+        }
+    }
+}
+
+fn store_item_from_indices<T: Clone>(
+    item_list: &[T],
+    indices: &[usize],
+    comb_list: &mut Vec<Vec<T>>,
+) {
+    let mut comb = Vec::new();
+    for i in indices.iter() {
+        comb.push(item_list[*i].clone());
+    }
+    comb_list.push(comb);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,8 +140,8 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 assert!(err == MonarchError::NoOperation);
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
@@ -97,8 +154,8 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 assert!(err == MonarchError::NoRelation);
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
@@ -111,8 +168,8 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 assert!(err == MonarchError::NoInput);
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
@@ -125,8 +182,8 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 assert!(err == MonarchError::NoTransformations);
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
@@ -134,18 +191,11 @@ mod tests {
     fn it_completes_basic_test() {
         let mut runner: MetamorphicTestRunner<(i32, i32), i32> = MetamorphicTestRunner::new();
         runner.set_input((2, 2));
-        runner.set_relation(|&z1, &z2| {
-            z1.signum() == z2.signum()
-        });
-        runner.set_operation(|&(x, y)| {
-            x + y
-        });
-        runner.add_transformation(|&mut (x, y)| {
-            (2*x, 2*y)
-        });
-        runner.add_transformation(|&mut (x, y)| {
-            (y, x)
-        });
+        runner.set_relation(|&z1, &z2| z1.signum() == z2.signum());
+        runner.set_operation(|&(x, y)| x + y);
+        runner.add_transformation(|&mut (x, y)| (2 * x, 2 * y));
+        runner.add_transformation(|&mut (x, y)| (y, x));
         runner.run().unwrap();
     }
+
 }
