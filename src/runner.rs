@@ -4,14 +4,23 @@ use proptest::collection;
 use proptest::prelude::*;
 use std::fmt::Debug;
 
-#[derive(Debug, PartialEq)]
+/// An error that may be encountered while running metamorphic tests.
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum MonarchError {
+    /// An initial input was no provided.
     NoInput,
+
+    /// No transformations were provided.
     NoTransformations,
+
+    /// A metamorphic relation was not provided.
     NoRelation,
+
+    /// An operation transforming an input to an output was not provided.
     NoOperation,
 }
 
+/// The struct responsible for running the metamorphic test suite.
 pub struct MetamorphicTestRunner<IN: Clone + Debug, OUT> {
     input: Option<IN>,
     operation: Option<Box<dyn Fn(&IN) -> OUT>>,
@@ -20,6 +29,7 @@ pub struct MetamorphicTestRunner<IN: Clone + Debug, OUT> {
 }
 
 impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
+    /// Construct a new test runner.
     pub fn new() -> Self {
         MetamorphicTestRunner {
             input: None,
@@ -29,22 +39,32 @@ impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
         }
     }
 
+    /// Supply an additional way of transforming an input.
     pub fn add_transformation(&mut self, f: impl Fn(&mut IN) -> IN + 'static) {
         self.transformations.push(Box::new(f));
     }
 
+    /// Set the initial input.
+    ///
+    /// This initial input along with the operation will be used to compute an output against which
+    /// all other outputs will be compared using the supplied metamorphic relation.
     pub fn set_input(&mut self, input: IN) {
         self.input = Some(input);
     }
 
+    /// Set the operation which will be used to compute an output for each input.
     pub fn set_operation(&mut self, f: impl Fn(&IN) -> OUT + 'static) {
         self.operation = Some(Box::new(f));
     }
 
+    /// Set the metamorphic relation which determines whether two outputs pass the test.
     pub fn set_relation(&mut self, f: impl Fn(&OUT, &OUT) -> bool + 'static) {
         self.relation = Some(Box::new(f));
     }
 
+    /// Run the metamorphic test.
+    // TODO: At some point it would probably be a good idea to cache the combinations so they aren't
+    //       computed every time a new input is set.
     pub fn run(&mut self) -> Result<(), MonarchError> {
         if self.input.is_none() {
             return Err(MonarchError::NoInput);
@@ -84,25 +104,36 @@ fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Vec<Vec<T>> {
     current_indices[last_index] -= 1; // prepare for first loop iteration
     let mut items: Vec<Vec<T>> = Vec::new();
     loop {
-        if indices_in_final_position(&current_indices, n, k) {
+        if indices_are_in_final_positions(&current_indices, n, k) {
             return items;
         }
         while current_indices[last_index] < (start_of_last_k_elements + last_index) {
             current_indices[last_index] += 1;
-            store_item_from_indices(&list, &current_indices, &mut items);
+            store_combination_from_indices(&list, &current_indices, &mut items);
         }
         pack_indices_leftward(&mut current_indices, n, k);
-        store_item_from_indices(&list, &current_indices, &mut items);
+        store_combination_from_indices(&list, &current_indices, &mut items);
     }
 }
 
-fn indices_in_final_position(indices: &[usize], n: usize, k: usize) -> bool {
+/// Returns true if the indices point to the last `k` elements of a collection with length `n`
+/// in order.
+///
+/// For a list of length 5 and a list of indices of length 3, the final positions would
+/// be (2, 3, 4).
+fn indices_are_in_final_positions(indices: &[usize], n: usize, k: usize) -> bool {
     let start_of_last_k_elements = n - k;
     (0..k)
         .map(|i| indices[i] == (start_of_last_k_elements + i))
         .all(|x| x)
 }
 
+/// Find the rightmost index that is not in its final position and pack all indices that follow
+/// immediately following this index.
+///
+/// Given a list of items with length 10 and the indices (0, 2, 8, 9), the last two indices are in
+/// their final positions. The rightmost index not in its final position is the index with value 2.
+/// The last two indices will be packed to the left so that the result is (0, 2, 3, 4).
 fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
     let start_of_last_k_elements = n - k;
     // Find the rightmost index that isn't in its final position and increment it.
@@ -119,7 +150,9 @@ fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
     }
 }
 
-fn store_item_from_indices<T: Clone>(
+/// Given a set of indices into a collection of items, use the indices to construct a combination
+/// and add it to the list of combinations.
+fn store_combination_from_indices<T: Clone>(
     item_list: &[T],
     indices: &[usize],
     comb_list: &mut Vec<Vec<T>>,
@@ -269,7 +302,7 @@ mod tests {
         fn correctly_identifies_final_index_positions(
             (indices, n) in indices_and_items_length_final()
         ) {
-            prop_assert!(indices_in_final_position(indices.as_ref(), n, indices.len()));
+            prop_assert!(indices_are_in_final_positions(indices.as_ref(), n, indices.len()));
         }
 
         #[test]
@@ -282,7 +315,7 @@ mod tests {
                 })
                 .all(|x| x);
             prop_assume!(!is_final);
-            prop_assert!(!indices_in_final_position(indices.as_ref(), n, k));
+            prop_assert!(!indices_are_in_final_positions(indices.as_ref(), n, k));
         }
     }
 }
