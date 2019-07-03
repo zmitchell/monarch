@@ -5,3 +5,6 @@ authors = ["Zach Mitchell <zmitchell@fastmail.com>"]
 edition = "2018"
 
 [dependencies]
+
+[dev-dependencies]
+proptest = "^0.9.4"

@@ -1,4 +1,8 @@
 use std::fmt::Debug;
+#[cfg(test)]
+use proptest::prelude::*;
+#[cfg(test)]
+use proptest::collection;
 
 #[derive(Debug, PartialEq)]
 pub enum MonarchError {
@@ -131,6 +135,19 @@ fn store_item_from_indices<T: Clone>(
 mod tests {
     use super::*;
 
+    /// A strategy to produce a vector of indices into a vector of items.
+    ///
+    /// The return value is a tuple (indices_vec, items_vec). The `indices_vec` is guaranteed to be
+    /// no longer than the `items_vec`. The contents of `indices_vec` have very few constraints. The
+    /// maximum value of any index is the final index of `items_vec`, but the indices are in no
+    /// particular order and may not even be unique.
+    fn indices_and_items() -> impl Strategy<Value=(Vec<usize>, Vec<usize>)> {
+        collection::vec(any::<usize>(), 1..100usize)
+            .prop_flat_map(|v| {
+                (collection::vec(0..v.len(), 1..=v.len()), Just(v))
+            })
+    }
+
     #[test]
     fn it_errors_when_operation_is_missing() {
         let mut runner: MetamorphicTestRunner<i32, i32> = MetamorphicTestRunner::new();
@@ -198,4 +215,25 @@ mod tests {
         runner.run().unwrap();
     }
 
+    #[test]
+    fn correctly_identifies_final_index_positions() {
+        let items = vec![0, 1, 2, 3, 4];
+        let indices = vec![2, 3, 4];
+        assert!(indices_in_final_position(indices.as_ref(), items.len(), indices.len()));
+    }
+
+    proptest! {
+        #[test]
+        fn correctly_identifies_nonfinal_index_positions((indices, items) in indices_and_items()) {
+            let n = items.len();
+            let k = indices.len();
+            let is_final = (0..k)
+                .map(|i| {
+                    indices[k - 1 - i] == n - 1 - i
+                })
+                .all(|x| x);
+            prop_assume!(!is_final);
+            prop_assert!(!indices_in_final_position(indices.as_ref(), n, k));
+        }
+    }
 }
