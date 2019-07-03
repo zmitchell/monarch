@@ -1,8 +1,8 @@
-use std::fmt::Debug;
-#[cfg(test)]
-use proptest::prelude::*;
 #[cfg(test)]
 use proptest::collection;
+#[cfg(test)]
+use proptest::prelude::*;
+use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
 pub enum MonarchError {
@@ -143,9 +143,58 @@ mod tests {
     /// particular order and may not even be unique.
     fn indices_and_items() -> impl Strategy<Value=(Vec<usize>, Vec<usize>)> {
         collection::vec(any::<usize>(), 1..100usize)
-            .prop_flat_map(|v| {
-                (collection::vec(0..v.len(), 1..=v.len()), Just(v))
-            })
+            .prop_flat_map(|v| (collection::vec(0..v.len(), 1..=v.len()), Just(v)))
+    }
+
+    /// A strategy to produce a vector of indices pointing to the last few items in
+    /// a vector of items.
+    ///
+    /// The return value is a tuple (indices_vec, items_vec). The `indices_vec` is guaranteed to be
+    /// no longer than the `items_vec`, and the indices are guaranteed to be unique and in the final
+    /// state i.e. for an `items_vec` of length `n` and `indices_vec` of length `k`, the indices in
+    /// the `indices_vec` will point to the last `k` items in `items_vec` with the indices in
+    /// ascending order.
+    fn indices_and_items_final() -> impl Strategy<Value=(Vec<usize>, Vec<usize>)> {
+        collection::vec(any::<usize>(), 1..100usize).prop_flat_map(|item_vec| {
+            let n = item_vec.len();
+            (
+                (1..=n).prop_map(move |k| {
+                    let start_of_last_k_items = n - k;
+                    let mut ind_vec = Vec::with_capacity(k);
+                    for i in 0..k {
+                        ind_vec.push(start_of_last_k_items + i);
+                    }
+                    ind_vec
+                }),
+                Just(item_vec),
+            )
+        })
+    }
+
+    /// A strategy to produce a vector of indices into an imaginary vector of items with length `n`.
+    ///
+    /// The return value is a tuple (indices_vec, n). The `indices_vec` is guaranteed to be
+    /// no longer than the `n` indices. The indices are guaranteed to be unique and in the final
+    /// state i.e. for an `items_vec` of length `n` and `indices_vec` of length `k`, the indices in
+    /// the `indices_vec` will point to the last `k` items in `items_vec` with the indices in
+    /// ascending order.
+    ///
+    /// This strategy is simpler and faster when you only care about the ordering of the indices and
+    /// don't actually need the contents of the `items_vec`.
+    fn indices_and_items_length_final() -> impl Strategy<Value=(Vec<usize>, usize)> {
+        (1..100usize).prop_flat_map(|n| {
+            (
+                (1..=n).prop_map(move |k| {
+                    let start_of_last_k_items = n - k;
+                    let mut ind_vec = Vec::with_capacity(k);
+                    for i in 0..k {
+                        ind_vec.push(start_of_last_k_items + i);
+                    }
+                    ind_vec
+                }),
+                Just(n),
+            )
+        })
     }
 
     #[test]
@@ -156,7 +205,7 @@ mod tests {
         runner.add_transformation(|&mut x| x);
         match runner.run() {
             Err(err) => {
-                assert!(err == MonarchError::NoOperation);
+                assert_eq!(err, MonarchError::NoOperation);
             }
             _ => panic!(),
         }
@@ -170,7 +219,7 @@ mod tests {
         runner.add_transformation(|&mut x| x);
         match runner.run() {
             Err(err) => {
-                assert!(err == MonarchError::NoRelation);
+                assert_eq!(err, MonarchError::NoRelation);
             }
             _ => panic!(),
         }
@@ -184,7 +233,7 @@ mod tests {
         runner.add_transformation(|&mut x| x);
         match runner.run() {
             Err(err) => {
-                assert!(err == MonarchError::NoInput);
+                assert_eq!(err, MonarchError::NoInput);
             }
             _ => panic!(),
         }
@@ -198,7 +247,7 @@ mod tests {
         runner.set_input(0);
         match runner.run() {
             Err(err) => {
-                assert!(err == MonarchError::NoTransformations);
+                assert_eq!(err, MonarchError::NoTransformations);
             }
             _ => panic!(),
         }
@@ -215,14 +264,14 @@ mod tests {
         runner.run().unwrap();
     }
 
-    #[test]
-    fn correctly_identifies_final_index_positions() {
-        let items = vec![0, 1, 2, 3, 4];
-        let indices = vec![2, 3, 4];
-        assert!(indices_in_final_position(indices.as_ref(), items.len(), indices.len()));
-    }
-
     proptest! {
+        #[test]
+        fn correctly_identifies_final_index_positions(
+            (indices, n) in indices_and_items_length_final()
+        ) {
+            prop_assert!(indices_in_final_position(indices.as_ref(), n, indices.len()));
+        }
+
         #[test]
         fn correctly_identifies_nonfinal_index_positions((indices, items) in indices_and_items()) {
             let n = items.len();
