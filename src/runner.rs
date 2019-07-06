@@ -94,10 +94,33 @@ impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
     }
 }
 
-// `list` should really be U: Index + IntoIterator<T> where T: Clone
-// TODO: Add documentation string
-fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Vec<Vec<T>> {
+/// An error that may be encountered while generating combinations.
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum CombinationError {
+    /// The list of items from which combinations will be drawn is empty.
+    EmptyList,
+
+    /// The requested combination size is larger than the list of items.
+    KLargerThanN,
+
+    /// The requested combination size is zero.
+    KIsZero,
+}
+
+/// Return all combinations (without replacement) of size `k` from a list of items.
+///
+/// For a list with length `n`, this will return n! / k! (n - k)! combinations.
+fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Result<Vec<Vec<T>>, CombinationError> {
     let n = list.len();
+    if list.is_empty() {
+        return Err(CombinationError::EmptyList);
+    }
+    if k > n {
+        return Err(CombinationError::KLargerThanN);
+    }
+    if k == 0 {
+        return Err(CombinationError::KIsZero);
+    }
     let last_index = k - 1;
     let start_of_last_k_elements = n - k;
     let mut current_indices: Vec<usize> = (0..k).collect();
@@ -105,7 +128,7 @@ fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Vec<Vec<T>> {
     let mut items: Vec<Vec<T>> = Vec::new();
     loop {
         if indices_are_in_final_positions(&current_indices, n, k) {
-            return items;
+            return Ok(items);
         }
         while current_indices[last_index] < (start_of_last_k_elements + last_index) {
             current_indices[last_index] += 1;
@@ -230,6 +253,14 @@ mod tests {
         })
     }
 
+    /// A strategy producing a vector of items and a usize larger than the length of the vector
+    fn items_and_too_large_k() -> impl Strategy<Value=(Vec<usize>, usize)> {
+        collection::vec(any::<usize>(), 1..100usize).prop_flat_map(|v| {
+            let n = v.len();
+            (Just(v), (n + 1)..500usize)
+        })
+    }
+
     #[test]
     fn it_errors_when_operation_is_missing() {
         let mut runner: MetamorphicTestRunner<i32, i32> = MetamorphicTestRunner::new();
@@ -297,6 +328,16 @@ mod tests {
         runner.run().unwrap();
     }
 
+    #[test]
+    fn error_when_k_is_zero() {
+        let list = vec![0, 1, 2, 3, 4];
+        let res = combinations(list, 0usize);
+        match res {
+            Err(e) => assert_eq!(e, CombinationError::KIsZero),
+            _ => assert!(false),
+        }
+    }
+
     proptest! {
         #[test]
         fn correctly_identifies_final_index_positions(
@@ -306,7 +347,9 @@ mod tests {
         }
 
         #[test]
-        fn correctly_identifies_nonfinal_index_positions((indices, items) in indices_and_items()) {
+        fn correctly_identifies_nonfinal_index_positions(
+            (indices, items) in indices_and_items()
+        ) {
             let n = items.len();
             let k = indices.len();
             let is_final = (0..k)
@@ -317,5 +360,29 @@ mod tests {
             prop_assume!(!is_final);
             prop_assert!(!indices_are_in_final_positions(indices.as_ref(), n, k));
         }
+
+        #[test]
+        fn error_when_k_too_large(
+            (list, k) in items_and_too_large_k()
+        ) {
+            let n = list.len();
+            let res = combinations(list, k);
+            match res {
+                Err(e) => prop_assert_eq!(e, CombinationError::KLargerThanN),
+                Ok(_) => prop_assert!(false),
+            }
+        }
+
+        #[test]
+        fn error_when_list_is_empty(k: usize) {
+            prop_assume!(k > 0);
+            let list: Vec<usize> = Vec::new();
+            let res = combinations(list, k);
+            match res {
+                Err(e) => prop_assert_eq!(e, CombinationError::EmptyList),
+                _ => prop_assert!(false),
+            }
+        }
+
     }
 }
