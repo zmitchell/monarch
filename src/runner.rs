@@ -98,22 +98,24 @@ impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CombinationError {
     /// The list of items from which combinations will be drawn is empty.
-    EmptyList,
+    NIsZero,
 
     /// The requested combination size is larger than the list of items.
     KLargerThanN,
 
     /// The requested combination size is zero.
     KIsZero,
+
+    /// Tried to compute a factorial too large to store in a usize.
+    FactorialSize,
 }
 
-/// Return all combinations (without replacement) of size `k` from a list of items.
+/// Return all combinations (without replacement) of size `k` from a list of `n` items.
 ///
-/// For a list with length `n`, this will return n! / k! (n - k)! combinations.
-fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Result<Vec<Vec<T>>, CombinationError> {
-    let n = list.len();
-    if list.is_empty() {
-        return Err(CombinationError::EmptyList);
+/// This will return n! / k! (n - k)! combinations.
+fn combinations(n: usize, k: usize) -> Result<Vec<Vec<usize>>, CombinationError> {
+    if n == 0 {
+        return Err(CombinationError::NIsZero);
     }
     if k > n {
         return Err(CombinationError::KLargerThanN);
@@ -121,22 +123,46 @@ fn combinations<T: Clone>(list: Vec<T>, k: usize) -> Result<Vec<Vec<T>>, Combina
     if k == 0 {
         return Err(CombinationError::KIsZero);
     }
+    if k == 1 {
+        return Ok(each_index_separately(n));
+    }
     let last_index = k - 1;
     let start_of_last_k_elements = n - k;
     let mut current_indices: Vec<usize> = (0..k).collect();
-    current_indices[last_index] -= 1; // prepare for first loop iteration
-    let mut items: Vec<Vec<T>> = Vec::new();
+    let total_combinations: usize = num_combinations(n, k)?;
+    let mut items: Vec<Vec<usize>> = Vec::with_capacity(total_combinations);
+    for _ in 0..total_combinations {
+        let inited_item = vec![0; k];
+        items.push(inited_item);
+    }
+    let mut item_index = 0usize;
+    items[item_index].copy_from_slice(current_indices.as_slice());
+    item_index += 1;
     loop {
-        if indices_are_in_final_positions(&current_indices, n, k) {
+        if indices_are_in_final_positions(current_indices.as_slice(), n, k) {
             return Ok(items);
         }
         while current_indices[last_index] < (start_of_last_k_elements + last_index) {
             current_indices[last_index] += 1;
-            store_combination_from_indices(&list, &current_indices, &mut items);
+            items[item_index].copy_from_slice(current_indices.as_slice());
+            item_index += 1;
         }
         pack_indices_leftward(&mut current_indices, n, k);
-        store_combination_from_indices(&list, &current_indices, &mut items);
+        items[item_index].copy_from_slice(current_indices.as_slice());
+        item_index += 1;
     }
+}
+
+/// Returns each element in its own vector.
+///
+/// This is useful when the combination size is 1, as this avoids all the other machinery.
+fn each_index_separately(n: usize) -> Vec<Vec<usize>> {
+    let mut items: Vec<Vec<usize>> = Vec::with_capacity(n);
+    for i in 0..n {
+        items.push(Vec::with_capacity(1));
+        items[i].push(i);
+    }
+    return items;
 }
 
 /// Returns true if the indices point to the last `k` elements of a collection with length `n`
@@ -180,11 +206,36 @@ fn store_combination_from_indices<T: Clone>(
     indices: &[usize],
     comb_list: &mut Vec<Vec<T>>,
 ) {
-    let mut comb = Vec::new();
+    let mut comb = Vec::with_capacity(indices.len());
     for i in indices.iter() {
         comb.push(item_list[*i].clone());
     }
     comb_list.push(comb);
+}
+
+/// Returns the number of combinations given the length of the list and the number of items in
+/// each combination.
+fn num_combinations(n: usize, k: usize) -> Result<usize, CombinationError> {
+    let numerator = ((k + 1)..=n).rev().fold(Some(1usize), |acc, x| match acc {
+        Some(acc) => acc.checked_mul(x),
+        None => None,
+    });
+    let bottom = factorial(n - k)?;
+    match numerator {
+        Some(top) => Ok(top / bottom),
+        None => return Err(CombinationError::FactorialSize),
+    }
+}
+
+/// Returns the factorial of `n`
+fn factorial(n: usize) -> Result<usize, CombinationError> {
+    if n > 20 {
+        return Err(CombinationError::FactorialSize);
+    }
+    if n == 0 {
+        return Ok(1);
+    }
+    Ok((1..=n).product())
 }
 
 #[cfg(test)]
@@ -261,6 +312,24 @@ mod tests {
         })
     }
 
+    /// A strategy producing a vector of items and valid combination size.
+    fn items_and_valid_k(lim: usize) -> impl Strategy<Value=(Vec<usize>, usize)> {
+        collection::vec(any::<usize>(), 1..=lim).prop_flat_map(|v| {
+            let n = v.len();
+            (Just(v), 1..=n)
+        })
+    }
+
+    /// A strategy producing two usizes where one is less than the other.
+    fn valid_n_and_k(lim: usize) -> impl Strategy<Value=(usize, usize)> {
+        (1usize..=lim).prop_flat_map(|n| (Just(n), 1..=n))
+    }
+
+    /// A strategy producing two usizes where one is less than the other.
+    fn valid_n_and_too_large_k(lim: usize) -> impl Strategy<Value=(usize, usize)> {
+        (2usize..=lim).prop_flat_map(|k: usize| (1..k, Just(k)))
+    }
+
     #[test]
     fn it_errors_when_operation_is_missing() {
         let mut runner: MetamorphicTestRunner<i32, i32> = MetamorphicTestRunner::new();
@@ -330,12 +399,27 @@ mod tests {
 
     #[test]
     fn error_when_k_is_zero() {
-        let list = vec![0, 1, 2, 3, 4];
-        let res = combinations(list, 0usize);
+        let res = combinations(5usize, 0usize);
         match res {
             Err(e) => assert_eq!(e, CombinationError::KIsZero),
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn correct_factorial_output() {
+        let f = factorial(0);
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), 1);
+        let f = factorial(1);
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), 1);
+        let f = factorial(2);
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), 2);
+        let f = factorial(4);
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), 24);
     }
 
     proptest! {
@@ -363,10 +447,9 @@ mod tests {
 
         #[test]
         fn error_when_k_too_large(
-            (list, k) in items_and_too_large_k()
+            (n, k) in valid_n_and_too_large_k(100)
         ) {
-            let n = list.len();
-            let res = combinations(list, k);
+            let res = combinations(n, k);
             match res {
                 Err(e) => prop_assert_eq!(e, CombinationError::KLargerThanN),
                 Ok(_) => prop_assert!(false),
@@ -376,12 +459,47 @@ mod tests {
         #[test]
         fn error_when_list_is_empty(k: usize) {
             prop_assume!(k > 0);
-            let list: Vec<usize> = Vec::new();
-            let res = combinations(list, k);
+            let res = combinations(0usize, k);
             match res {
-                Err(e) => prop_assert_eq!(e, CombinationError::EmptyList),
+                Err(e) => prop_assert_eq!(e, CombinationError::NIsZero),
                 _ => prop_assert!(false),
             }
+        }
+
+        #[test]
+        fn error_when_factorial_too_large(n: usize) {
+            prop_assume!(n > 20);
+            let f = factorial(n);
+            match f {
+                Err(e) => prop_assert_eq!(e, CombinationError::FactorialSize),
+                Ok(_) => prop_assert!(false),
+            }
+        }
+
+        #[test]
+        fn num_combinations_computed_correctly(
+            (n, k) in valid_n_and_k(20)
+        ) {
+            let n_fac = factorial(n).unwrap();
+            let k_fac = factorial(k).unwrap();
+            let n_min_k_fac = factorial(n - k).unwrap();
+            let by_hand = n_fac / k_fac / n_min_k_fac;
+            let computed = num_combinations(n, k).unwrap();
+            prop_assert_eq!(by_hand, computed);
+        }
+
+        #[test]
+        fn correct_num_combinations_produced(
+            (n, k) in valid_n_and_k(20)
+        ) {
+            let expected_num = num_combinations(n, k).unwrap();
+            let mut combs = combinations(n, k).unwrap();
+            let num_combs = combs.len();
+            combs.sort_unstable();
+            combs.dedup();
+            let unique_combs = combs.len();
+            prop_assert_eq!(num_combs, unique_combs);
+            prop_assert_eq!(expected_num, unique_combs);
         }
 
     }
