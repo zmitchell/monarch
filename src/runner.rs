@@ -129,27 +129,18 @@ fn combinations(n: usize, k: usize) -> Result<Vec<Vec<usize>>, CombinationError>
     let last_index = k - 1;
     let start_of_last_k_elements = n - k;
     let mut current_indices: Vec<usize> = (0..k).collect();
-    let total_combinations: usize = num_combinations(n, k)?;
-    let mut items: Vec<Vec<usize>> = Vec::with_capacity(total_combinations);
-    for _ in 0..total_combinations {
-        let inited_item = vec![0; k];
-        items.push(inited_item);
-    }
-    let mut item_index = 0usize;
-    items[item_index].copy_from_slice(current_indices.as_slice());
-    item_index += 1;
+    let mut items: Vec<Vec<usize>> = Vec::new();
+    items.push(current_indices.clone());
     loop {
         if indices_are_in_final_positions(current_indices.as_slice(), n, k) {
             return Ok(items);
         }
         while current_indices[last_index] < (start_of_last_k_elements + last_index) {
             current_indices[last_index] += 1;
-            items[item_index].copy_from_slice(current_indices.as_slice());
-            item_index += 1;
+            items.push(current_indices.clone());
         }
         pack_indices_leftward(&mut current_indices, n, k);
-        items[item_index].copy_from_slice(current_indices.as_slice());
-        item_index += 1;
+        items.push(current_indices.clone());
     }
 }
 
@@ -197,20 +188,6 @@ fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
             break;
         }
     }
-}
-
-/// Given a set of indices into a collection of items, use the indices to construct a combination
-/// and add it to the list of combinations.
-fn store_combination_from_indices<T: Clone>(
-    item_list: &[T],
-    indices: &[usize],
-    comb_list: &mut Vec<Vec<T>>,
-) {
-    let mut comb = Vec::with_capacity(indices.len());
-    for i in indices.iter() {
-        comb.push(item_list[*i].clone());
-    }
-    comb_list.push(comb);
 }
 
 /// Returns the number of combinations given the length of the list and the number of items in
@@ -406,22 +383,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn correct_factorial_output() {
-        let f = factorial(0);
-        assert!(f.is_ok());
-        assert_eq!(f.unwrap(), 1);
-        let f = factorial(1);
-        assert!(f.is_ok());
-        assert_eq!(f.unwrap(), 1);
-        let f = factorial(2);
-        assert!(f.is_ok());
-        assert_eq!(f.unwrap(), 2);
-        let f = factorial(4);
-        assert!(f.is_ok());
-        assert_eq!(f.unwrap(), 24);
-    }
-
     proptest! {
         #[test]
         fn correctly_identifies_final_index_positions(
@@ -464,28 +425,6 @@ mod tests {
                 Err(e) => prop_assert_eq!(e, CombinationError::NIsZero),
                 _ => prop_assert!(false),
             }
-        }
-
-        #[test]
-        fn error_when_factorial_too_large(n: usize) {
-            prop_assume!(n > 20);
-            let f = factorial(n);
-            match f {
-                Err(e) => prop_assert_eq!(e, CombinationError::FactorialSize),
-                Ok(_) => prop_assert!(false),
-            }
-        }
-
-        #[test]
-        fn num_combinations_computed_correctly(
-            (n, k) in valid_n_and_k(20)
-        ) {
-            let n_fac = factorial(n).unwrap();
-            let k_fac = factorial(k).unwrap();
-            let n_min_k_fac = factorial(n - k).unwrap();
-            let by_hand = n_fac / k_fac / n_min_k_fac;
-            let computed = num_combinations(n, k).unwrap();
-            prop_assert_eq!(by_hand, computed);
         }
 
         #[test]
