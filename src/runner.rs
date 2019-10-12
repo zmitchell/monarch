@@ -3,6 +3,7 @@ use proptest::collection;
 #[cfg(test)]
 use proptest::prelude::*;
 use std::fmt::Debug;
+use std::panic;
 
 /// An error that may be encountered while running metamorphic tests.
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -18,17 +19,26 @@ pub enum MonarchError {
 
     /// An operation transforming an input to an output was not provided.
     NoOperation,
+
+    /// An error occurred computing the combinations of the transformations.
+    Combinations(CombinationError),
+}
+
+impl From<CombinationError> for MonarchError {
+    fn from(err: CombinationError) -> Self {
+        MonarchError::Combinations(err)
+    }
 }
 
 /// The struct responsible for running the metamorphic test suite.
-pub struct MetamorphicTestRunner<IN: Clone + Debug, OUT> {
+pub struct MetamorphicTestRunner<IN: Clone + Debug, OUT: panic::UnwindSafe> {
     input: Option<IN>,
     operation: Option<Box<dyn Fn(&IN) -> OUT>>,
     transformations: Vec<Box<dyn Fn(&mut IN) -> IN>>,
     relation: Option<Box<dyn Fn(&OUT, &OUT) -> bool>>,
 }
 
-impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
+impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
     /// Construct a new test runner.
     pub fn new() -> Self {
         MetamorphicTestRunner {
@@ -81,14 +91,21 @@ impl<IN: Clone + Debug, OUT> MetamorphicTestRunner<IN, OUT> {
         let op = self.operation.take().unwrap();
         let input = self.input.take().unwrap();
         let relation = self.relation.take().unwrap();
-        let src_result = op(&input);
-        for transform in self.transformations.iter_mut() {
-            let mut fup_input = input.clone();
-            fup_input = transform(&mut fup_input);
-            let fup_result = op(&fup_input);
-            if !relation(&src_result, &fup_result) {
-                panic!("Relation not satisfied with input: {:?}", fup_input);
+        let src_output = op(&input);
+        let mut trans_combinations = Vec::new();
+        for i in 1..self.transformations.len() {
+            let combs = combinations(self.transformations.len(), i)?;
+            trans_combinations.extend_from_slice(combs.as_slice());
+        }
+        for comb in trans_combinations.iter() {
+            let mut trans_input = input.clone();
+            for i in comb.iter() {
+                trans_input = self.transformations[*i](&mut trans_input);
             }
+            let trans_output = op(&trans_input);
+            let test_result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                assert!(relation(&src_output, &trans_output));
+            })).unwrap();
         }
         Ok(())
     }
@@ -381,6 +398,32 @@ mod tests {
             Err(e) => assert_eq!(e, CombinationError::KIsZero),
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    #[should_panic]
+    fn combinations_are_applied() {
+        // This is a check to make sure that combinations of different sizes are being applied.
+        // The two ends of the spectrum are one transformation at a time and combinations that
+        // are the same size as the number of transformations. With three transformations the
+        // middle case is two transformations. You can differentiate this case by incrementing a
+        // starting value and looking for a value with the correct parity.
+        let mut runner: MetamorphicTestRunner<u32, u32> = MetamorphicTestRunner::new();
+        runner.set_input(0);
+        runner.set_relation(|&orig, &trans| {
+            if (trans == 1) || (trans == 3) {
+                return true;
+            } else if trans == 2 {
+                return false;
+            } else {
+                return true;
+            }
+        });
+        runner.set_operation(|&x| x);
+        runner.add_transformation(|&mut x| x + 1);
+        runner.add_transformation(|&mut x| x + 1);
+        runner.add_transformation(|&mut x| x + 1);
+        runner.run().unwrap();
     }
 
     proptest! {
