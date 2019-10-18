@@ -5,29 +5,25 @@ use proptest::prelude::*;
 use std::fmt::Debug;
 use std::panic;
 
-/// An error that may be encountered while running metamorphic tests.
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum MonarchError {
-    /// An initial input was no provided.
-    NoInput,
-
-    /// No transformations were provided.
-    NoTransformations,
-
-    /// A metamorphic relation was not provided.
-    NoRelation,
-
-    /// An operation transforming an input to an output was not provided.
-    NoOperation,
-
-    /// An error occurred computing the combinations of the transformations.
-    Combinations(CombinationError),
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reason {
+    msg: String,
 }
 
-impl From<CombinationError> for MonarchError {
-    fn from(err: CombinationError) -> Self {
-        MonarchError::Combinations(err)
+impl Reason {
+    fn message(&self) -> String {
+        self.msg.clone()
     }
+}
+
+/// An error that may be encountered while running metamorphic tests.
+#[derive(Debug, PartialEq, Clone)]
+pub enum MonarchError {
+    /// The test configuration is invalid
+    Invalid(Reason),
+
+    /// The test failed
+    TestFailure(Reason),
 }
 
 /// The struct responsible for running the metamorphic test suite.
@@ -77,16 +73,24 @@ impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
     //       computed every time a new input is set.
     pub fn run(&mut self) -> Result<(), MonarchError> {
         if self.input.is_none() {
-            return Err(MonarchError::NoInput);
+            return Err(MonarchError::Invalid(Reason {
+                msg: String::from("No input was provided")
+            }));
         }
         if self.operation.is_none() {
-            return Err(MonarchError::NoOperation);
+            return Err(MonarchError::Invalid(Reason {
+                msg: String::from("No operation was provided")
+            }));
         }
         if self.relation.is_none() {
-            return Err(MonarchError::NoRelation);
+            return Err(MonarchError::Invalid(Reason {
+                msg: String::from("No relation was provided")
+            }));
         }
         if self.transformations.is_empty() {
-            return Err(MonarchError::NoTransformations);
+            return Err(MonarchError::Invalid(Reason {
+                msg: String::from("No transformations were provided")
+            }));
         }
         let op = self.operation.take().unwrap();
         let input = self.input.take().unwrap();
@@ -111,34 +115,24 @@ impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
     }
 }
 
-/// An error that may be encountered while generating combinations.
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum CombinationError {
-    /// The list of items from which combinations will be drawn is empty.
-    NIsZero,
-
-    /// The requested combination size is larger than the list of items.
-    KLargerThanN,
-
-    /// The requested combination size is zero.
-    KIsZero,
-
-    /// Tried to compute a factorial too large to store in a usize.
-    FactorialSize,
-}
-
 /// Return all combinations (without replacement) of size `k` from a list of `n` items.
 ///
 /// This will return n! / k! (n - k)! combinations.
-fn combinations(n: usize, k: usize) -> Result<Vec<Vec<usize>>, CombinationError> {
+fn combinations(n: usize, k: usize) -> Result<Vec<Vec<usize>>, MonarchError> {
     if n == 0 {
-        return Err(CombinationError::NIsZero);
+        return Err(MonarchError::Invalid(Reason {
+            msg: String::from("Invalid number of combinations")
+        }));
     }
     if k > n {
-        return Err(CombinationError::KLargerThanN);
+        return Err(MonarchError::Invalid(Reason {
+            msg: String::from("Invalid number of combinations")
+        }));
     }
     if k == 0 {
-        return Err(CombinationError::KIsZero);
+        return Err(MonarchError::Invalid(Reason {
+            msg: String::from("Invalid number of combinations")
+        }));
     }
     if k == 1 {
         return Ok(each_index_separately(n));
@@ -209,7 +203,7 @@ fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
 
 /// Returns the number of combinations given the length of the list and the number of items in
 /// each combination.
-fn num_combinations(n: usize, k: usize) -> Result<usize, CombinationError> {
+fn num_combinations(n: usize, k: usize) -> Result<usize, MonarchError> {
     let numerator = ((k + 1)..=n).rev().fold(Some(1usize), |acc, x| match acc {
         Some(acc) => acc.checked_mul(x),
         None => None,
@@ -217,14 +211,20 @@ fn num_combinations(n: usize, k: usize) -> Result<usize, CombinationError> {
     let bottom = factorial(n - k)?;
     match numerator {
         Some(top) => Ok(top / bottom),
-        None => return Err(CombinationError::FactorialSize),
+        None => {
+            return Err(MonarchError::Invalid(Reason {
+                msg: String::from("Number of combinations too large")
+            }));
+        },
     }
 }
 
 /// Returns the factorial of `n`
-fn factorial(n: usize) -> Result<usize, CombinationError> {
+fn factorial(n: usize) -> Result<usize, MonarchError> {
     if n > 20 {
-        return Err(CombinationError::FactorialSize);
+        return Err(MonarchError::Invalid(Reason {
+            msg: String::from("Invalid number of combinations")
+        }));
     }
     if n == 0 {
         return Ok(1);
@@ -332,7 +332,8 @@ mod tests {
         runner.add_transformation(|&mut x| x);
         match runner.run() {
             Err(err) => {
-                assert_eq!(err, MonarchError::NoOperation);
+                let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
             }
             _ => panic!(),
         }
@@ -346,7 +347,8 @@ mod tests {
         runner.add_transformation(|&mut x| x);
         match runner.run() {
             Err(err) => {
-                assert_eq!(err, MonarchError::NoRelation);
+                let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
             }
             _ => panic!(),
         }
@@ -360,7 +362,8 @@ mod tests {
         runner.add_transformation(|&mut x| x);
         match runner.run() {
             Err(err) => {
-                assert_eq!(err, MonarchError::NoInput);
+                let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
             }
             _ => panic!(),
         }
@@ -374,7 +377,8 @@ mod tests {
         runner.set_input(0);
         match runner.run() {
             Err(err) => {
-                assert_eq!(err, MonarchError::NoTransformations);
+                let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
             }
             _ => panic!(),
         }
@@ -395,7 +399,10 @@ mod tests {
     fn error_when_k_is_zero() {
         let res = combinations(5usize, 0usize);
         match res {
-            Err(e) => assert_eq!(e, CombinationError::KIsZero),
+            Err(e) => {
+                let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                assert_eq!(std::mem::discriminant(&e), std::mem::discriminant(&dummy_error));
+            },
             _ => assert!(false),
         }
     }
@@ -455,7 +462,10 @@ mod tests {
         ) {
             let res = combinations(n, k);
             match res {
-                Err(e) => prop_assert_eq!(e, CombinationError::KLargerThanN),
+                Err(e) => {
+                    let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                    prop_assert_eq!(std::mem::discriminant(&e), std::mem::discriminant(&dummy_error));
+                },
                 Ok(_) => prop_assert!(false),
             }
         }
@@ -465,7 +475,10 @@ mod tests {
             prop_assume!(k > 0);
             let res = combinations(0usize, k);
             match res {
-                Err(e) => prop_assert_eq!(e, CombinationError::NIsZero),
+                Err(e) => {
+                    let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
+                    prop_assert_eq!(std::mem::discriminant(&e), std::mem::discriminant(&dummy_error));
+                },
                 _ => prop_assert!(false),
             }
         }
