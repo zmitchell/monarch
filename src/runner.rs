@@ -109,7 +109,13 @@ impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
             let trans_output = op(&trans_input);
             let test_result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
                 assert!(relation(&src_output, &trans_output));
-            })).unwrap();
+            }));
+            if test_result.is_err() {
+                return Err(MonarchError::TestFailure(Reason {
+                    msg: format!("Test failed with original input {:?} and transformed input {:?}",
+                    input.clone(), trans_input)
+                }));
+            }
         }
         Ok(())
     }
@@ -201,40 +207,41 @@ fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
     }
 }
 
-/// Returns the number of combinations given the length of the list and the number of items in
-/// each combination.
-fn num_combinations(n: usize, k: usize) -> Result<usize, MonarchError> {
-    let numerator = ((k + 1)..=n).rev().fold(Some(1usize), |acc, x| match acc {
-        Some(acc) => acc.checked_mul(x),
-        None => None,
-    });
-    let bottom = factorial(n - k)?;
-    match numerator {
-        Some(top) => Ok(top / bottom),
-        None => {
-            return Err(MonarchError::Invalid(Reason {
-                msg: String::from("Number of combinations too large")
-            }));
-        },
-    }
-}
-
-/// Returns the factorial of `n`
-fn factorial(n: usize) -> Result<usize, MonarchError> {
-    if n > 20 {
-        return Err(MonarchError::Invalid(Reason {
-            msg: String::from("Invalid number of combinations")
-        }));
-    }
-    if n == 0 {
-        return Ok(1);
-    }
-    Ok((1..=n).product())
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Returns the number of combinations given the length of the list and the number of items in
+    /// each combination.
+    fn num_combinations(n: usize, k: usize) -> Result<usize, MonarchError> {
+        let numerator = ((k + 1)..=n).rev().fold(Some(1usize), |acc, x| match acc {
+            Some(acc) => acc.checked_mul(x),
+            None => None,
+        });
+        let bottom = factorial(n - k)?;
+        match numerator {
+            Some(top) => Ok(top / bottom),
+            None => {
+                return Err(MonarchError::Invalid(Reason {
+                    msg: String::from("Number of combinations too large")
+                }));
+            },
+        }
+    }
+
+    /// Returns the factorial of `n`
+    fn factorial(n: usize) -> Result<usize, MonarchError> {
+        if n > 20 {
+            return Err(MonarchError::Invalid(Reason {
+                msg: String::from("Invalid number of combinations")
+            }));
+        }
+        if n == 0 {
+            return Ok(1);
+        }
+        Ok((1..=n).product())
+    }
 
     /// A strategy to produce a vector of indices into a vector of items.
     ///
@@ -245,31 +252,6 @@ mod tests {
     fn indices_and_items() -> impl Strategy<Value=(Vec<usize>, Vec<usize>)> {
         collection::vec(any::<usize>(), 1..100usize)
             .prop_flat_map(|v| (collection::vec(0..v.len(), 1..=v.len()), Just(v)))
-    }
-
-    /// A strategy to produce a vector of indices pointing to the last few items in
-    /// a vector of items.
-    ///
-    /// The return value is a tuple (indices_vec, items_vec). The `indices_vec` is guaranteed to be
-    /// no longer than the `items_vec`, and the indices are guaranteed to be unique and in the final
-    /// state i.e. for an `items_vec` of length `n` and `indices_vec` of length `k`, the indices in
-    /// the `indices_vec` will point to the last `k` items in `items_vec` with the indices in
-    /// ascending order.
-    fn indices_and_items_final() -> impl Strategy<Value=(Vec<usize>, Vec<usize>)> {
-        collection::vec(any::<usize>(), 1..100usize).prop_flat_map(|item_vec| {
-            let n = item_vec.len();
-            (
-                (1..=n).prop_map(move |k| {
-                    let start_of_last_k_items = n - k;
-                    let mut ind_vec = Vec::with_capacity(k);
-                    for i in 0..k {
-                        ind_vec.push(start_of_last_k_items + i);
-                    }
-                    ind_vec
-                }),
-                Just(item_vec),
-            )
-        })
     }
 
     /// A strategy to produce a vector of indices into an imaginary vector of items with length `n`.
@@ -295,22 +277,6 @@ mod tests {
                 }),
                 Just(n),
             )
-        })
-    }
-
-    /// A strategy producing a vector of items and a usize larger than the length of the vector
-    fn items_and_too_large_k() -> impl Strategy<Value=(Vec<usize>, usize)> {
-        collection::vec(any::<usize>(), 1..100usize).prop_flat_map(|v| {
-            let n = v.len();
-            (Just(v), (n + 1)..500usize)
-        })
-    }
-
-    /// A strategy producing a vector of items and valid combination size.
-    fn items_and_valid_k(lim: usize) -> impl Strategy<Value=(Vec<usize>, usize)> {
-        collection::vec(any::<usize>(), 1..=lim).prop_flat_map(|v| {
-            let n = v.len();
-            (Just(v), 1..=n)
         })
     }
 
@@ -430,6 +396,18 @@ mod tests {
         runner.add_transformation(|&mut x| x + 1);
         runner.add_transformation(|&mut x| x + 1);
         runner.add_transformation(|&mut x| x + 1);
+        runner.run().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn catches_test_failure() {
+        let mut runner: MetamorphicTestRunner<i32, i32> = MetamorphicTestRunner::new();
+        runner.set_input(0);
+        runner.set_relation(|&orig, &trans| orig > trans);
+        runner.set_operation(|&x| x);
+        runner.add_transformation(|&mut x| x + 1);
+        runner.add_transformation(|&mut x| x - 1);
         runner.run().unwrap();
     }
 
