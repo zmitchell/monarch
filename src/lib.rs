@@ -1,3 +1,3 @@
 mod runner;
 
-use runner::{MetamorphicTestRunner, MonarchError};
+pub use runner::{MetamorphicTestRunner, MonarchError};
