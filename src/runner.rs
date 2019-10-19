@@ -74,22 +74,22 @@ impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
     pub fn run(&mut self) -> Result<(), MonarchError> {
         if self.input.is_none() {
             return Err(MonarchError::Invalid(Reason {
-                msg: String::from("No input was provided")
+                msg: String::from("No input was provided"),
             }));
         }
         if self.operation.is_none() {
             return Err(MonarchError::Invalid(Reason {
-                msg: String::from("No operation was provided")
+                msg: String::from("No operation was provided"),
             }));
         }
         if self.relation.is_none() {
             return Err(MonarchError::Invalid(Reason {
-                msg: String::from("No relation was provided")
+                msg: String::from("No relation was provided"),
             }));
         }
         if self.transformations.is_empty() {
             return Err(MonarchError::Invalid(Reason {
-                msg: String::from("No transformations were provided")
+                msg: String::from("No transformations were provided"),
             }));
         }
         let op = self.operation.take().unwrap();
@@ -112,8 +112,11 @@ impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
             }));
             if test_result.is_err() {
                 return Err(MonarchError::TestFailure(Reason {
-                    msg: format!("Test failed with original input {:?} and transformed input {:?}",
-                    input.clone(), trans_input)
+                    msg: format!(
+                        "Test failed with original input {:?} and transformed input {:?}",
+                        input.clone(),
+                        trans_input
+                    ),
                 }));
             }
         }
@@ -127,17 +130,17 @@ impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
 fn combinations(n: usize, k: usize) -> Result<Vec<Vec<usize>>, MonarchError> {
     if n == 0 {
         return Err(MonarchError::Invalid(Reason {
-            msg: String::from("Invalid number of combinations")
+            msg: String::from("Invalid number of combinations"),
         }));
     }
     if k > n {
         return Err(MonarchError::Invalid(Reason {
-            msg: String::from("Invalid number of combinations")
+            msg: String::from("Invalid number of combinations"),
         }));
     }
     if k == 0 {
         return Err(MonarchError::Invalid(Reason {
-            msg: String::from("Invalid number of combinations")
+            msg: String::from("Invalid number of combinations"),
         }));
     }
     if k == 1 {
@@ -207,7 +210,6 @@ fn pack_indices_leftward(indices: &mut Vec<usize>, n: usize, k: usize) {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,9 +226,9 @@ mod tests {
             Some(top) => Ok(top / bottom),
             None => {
                 return Err(MonarchError::Invalid(Reason {
-                    msg: String::from("Number of combinations too large")
+                    msg: String::from("Number of combinations too large"),
                 }));
-            },
+            }
         }
     }
 
@@ -234,7 +236,7 @@ mod tests {
     fn factorial(n: usize) -> Result<usize, MonarchError> {
         if n > 20 {
             return Err(MonarchError::Invalid(Reason {
-                msg: String::from("Invalid number of combinations")
+                msg: String::from("Invalid number of combinations"),
             }));
         }
         if n == 0 {
@@ -249,7 +251,7 @@ mod tests {
     /// no longer than the `items_vec`. The contents of `indices_vec` have very few constraints. The
     /// maximum value of any index is the final index of `items_vec`, but the indices are in no
     /// particular order and may not even be unique.
-    fn indices_and_items() -> impl Strategy<Value=(Vec<usize>, Vec<usize>)> {
+    fn indices_and_items() -> impl Strategy<Value = (Vec<usize>, Vec<usize>)> {
         collection::vec(any::<usize>(), 1..100usize)
             .prop_flat_map(|v| (collection::vec(0..v.len(), 1..=v.len()), Just(v)))
     }
@@ -264,7 +266,7 @@ mod tests {
     ///
     /// This strategy is simpler and faster when you only care about the ordering of the indices and
     /// don't actually need the contents of the `items_vec`.
-    fn indices_and_items_length_final() -> impl Strategy<Value=(Vec<usize>, usize)> {
+    fn indices_and_items_length_final() -> impl Strategy<Value = (Vec<usize>, usize)> {
         (1..100usize).prop_flat_map(|n| {
             (
                 (1..=n).prop_map(move |k| {
@@ -281,12 +283,12 @@ mod tests {
     }
 
     /// A strategy producing two usizes where one is less than the other.
-    fn valid_n_and_k(lim: usize) -> impl Strategy<Value=(usize, usize)> {
+    fn valid_n_and_k(lim: usize) -> impl Strategy<Value = (usize, usize)> {
         (1usize..=lim).prop_flat_map(|n| (Just(n), 1..=n))
     }
 
     /// A strategy producing two usizes where one is less than the other.
-    fn valid_n_and_too_large_k(lim: usize) -> impl Strategy<Value=(usize, usize)> {
+    fn valid_n_and_too_large_k(lim: usize) -> impl Strategy<Value = (usize, usize)> {
         (2usize..=lim).prop_flat_map(|k: usize| (1..k, Just(k)))
     }
 
@@ -299,7 +301,10 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
-                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
+                assert_eq!(
+                    std::mem::discriminant(&err),
+                    std::mem::discriminant(&dummy_error)
+                );
             }
             _ => panic!(),
         }
@@ -314,7 +319,10 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
-                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
+                assert_eq!(
+                    std::mem::discriminant(&err),
+                    std::mem::discriminant(&dummy_error)
+                );
             }
             _ => panic!(),
         }
@@ -329,7 +337,10 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
-                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
+                assert_eq!(
+                    std::mem::discriminant(&err),
+                    std::mem::discriminant(&dummy_error)
+                );
             }
             _ => panic!(),
         }
@@ -344,7 +355,10 @@ mod tests {
         match runner.run() {
             Err(err) => {
                 let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
-                assert_eq!(std::mem::discriminant(&err), std::mem::discriminant(&dummy_error));
+                assert_eq!(
+                    std::mem::discriminant(&err),
+                    std::mem::discriminant(&dummy_error)
+                );
             }
             _ => panic!(),
         }
@@ -367,8 +381,11 @@ mod tests {
         match res {
             Err(e) => {
                 let dummy_error = MonarchError::Invalid(Reason { msg: String::new() });
-                assert_eq!(std::mem::discriminant(&e), std::mem::discriminant(&dummy_error));
-            },
+                assert_eq!(
+                    std::mem::discriminant(&e),
+                    std::mem::discriminant(&dummy_error)
+                );
+            }
             _ => assert!(false),
         }
     }
