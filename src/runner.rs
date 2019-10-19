@@ -34,6 +34,12 @@ pub struct MetamorphicTestRunner<IN: Clone + Debug, OUT: panic::UnwindSafe> {
     relation: Option<Box<dyn Fn(&OUT, &OUT) -> bool>>,
 }
 
+impl<IN: Clone + Debug, OUT: panic::UnwindSafe> Default for MetamorphicTestRunner<IN, OUT> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<IN: Clone + Debug, OUT: panic::UnwindSafe> MetamorphicTestRunner<IN, OUT> {
     /// Construct a new test runner.
     pub fn new() -> Self {
@@ -173,7 +179,7 @@ fn each_index_separately(n: usize) -> Vec<Vec<usize>> {
         items.push(Vec::with_capacity(1));
         items[i].push(i);
     }
-    return items;
+    items
 }
 
 /// Returns true if the indices point to the last `k` elements of a collection with length `n`
