@@ -3,6 +3,12 @@ name = "monarch"
 version = "0.1.0"
 authors = ["Zach Mitchell <zmitchell@fastmail.com>"]
 edition = "2018"
+description = "A (currently) barebones metamorphic testing utility"
+repository = "https://github.com/zmitchell/monarch"
+readme = "README.md"
+keywords = ["testing", "metamorphic-testing"]
+categories = ["development-tools::testing"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 
